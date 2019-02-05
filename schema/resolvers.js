@@ -8,10 +8,22 @@ const {
   get,
 } = require('ssb-helpers')
 
-const resourceClassficationTypeCurrency = 'resourceClassificationTest3:currency'
+const resourceClassficationType = 'resourceClassificationTest3'
 const economicResourceType = 'economicResourceTest3'
 const economicEventType = 'economicEventTest3'
 const unpublishAction = "unpublish resource"
+const transactionAction = "transaction"
+
+function sum(obj, src) {
+  Object.keys(src).forEach((key) => {
+    if (obj[key]) {
+      obj[key] = obj[key] + src[key]
+    } else obj[key] = src[key]
+  })
+  return obj
+}
+
+
 
 const getResourceClassfication = async (id, sbot) => {
   const resourceClassification = await message({ id }, sbot)
@@ -34,6 +46,60 @@ const getEconomicResource = async (id, sbot) => {
     economicResource.value.content,
     {key: id, resourceClassifiedAs, prices},
   )
+}
+
+const getUserBalance = async(username, sbot) => {
+  const events = await getMessagesByType({ type: economicEventType }, sbot)
+  const transactions = events.filter(event => event.value.content.action === transactionAction)
+  const userReceived = transactions
+    .filter(transaction => transaction.value.content.receiver === username)
+    .reduce((accumulator, currentValue) => {
+      currentValue.value.content.affectedQuantity
+        .map(price => {
+          const c = price.split(',')[1]
+          const value = parseInt(price.split(',')[0])
+          let currentValue = accumulator[c]
+          if (currentValue) {
+            return Object.assign(accumulator, { [c]: currentValue + value })
+          }
+          return Object.assign(accumulator, { [c]: value })
+        })
+      return accumulator
+    }, {})
+  const userProvided = transactions
+    .filter(transaction => transaction.value.content.provider === username)
+    .reduce((accumulator, currentValue) => {
+      currentValue.value.content.affectedQuantity
+        .map(price => {
+          const c = price.split(',')[1]
+          const value = parseInt(price.split(',')[0])
+          let currentValue = accumulator[c]
+          if (currentValue) {
+            return Object.assign(accumulator, { [c]: currentValue - value })
+          }
+          return Object.assign(accumulator, { [c]: -value })
+        })
+      return accumulator
+    }, {})
+    const balanced = sum(userReceived, userProvided)
+    const formated = Object.keys(balanced).map(key => `${balanced[key]},${key}`)
+    return getPrices(formated)
+}
+
+const getUserPublications = async(username, sbot) => {
+
+}
+
+const getUserTransactions = async(username, sbot) => {
+
+}
+
+const getUser = async(username, sbot) => {
+  const balance = getUserBalance(username, sbot)
+  return {
+    username,
+    balance,
+  }
 }
 
 const Query = {
@@ -64,6 +130,14 @@ const Query = {
         }
       })
   },
+  user: async(_, { username }, { sbot }) => {
+    return getUser(username, sbot)
+  },
+  transactions: async(_, {}, {sbot}) => {
+    const events = await getMessagesByType({ type: economicEventType }, sbot)
+    const transactions = events.filter(event => event.value.content.action === transactionAction)
+    return transactions.map(tx => Object.assign(tx.value.content, { key: tx.key }))
+  }
 }
 
 const Mutation = {
@@ -76,6 +150,24 @@ const Mutation = {
           category: affectedResource.resourceClassifiedAs.category,
           prices: affectedResource.prices,
           user: affectedResource.currentOwner,
+        }
+      })
+  },
+  transaction: async(_, { input: { provider, receiver, currency, value, affects }}, { sbot }) => {
+    return publish({
+      type: economicEventType,
+      affects: affects,
+      action: transactionAction,
+      provider,
+      receiver,
+      affectedQuantity: [`${value},${currency}`]
+    }, sbot)
+      .then(msg => {
+        return {
+          key: msg.key,
+          provider: getUser(msg.value.content.provider, sbot),
+          receiver: getUser(msg.value.content.receiver, sbot),
+          affectedQuantity: [ { currency, value }],
         }
       })
   },
