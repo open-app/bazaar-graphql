@@ -23,8 +23,6 @@ function sum(obj, src) {
   return obj
 }
 
-
-
 const getResourceClassfication = async (id, sbot) => {
   const resourceClassification = await message({ id }, sbot)
   return Object.assign({ key: resourceClassification.key }, resourceClassification.value.content)
@@ -141,6 +139,27 @@ const Query = {
 }
 
 const Mutation = {
+  publishResource: async (_, { input }, { sbot }) => {
+    const classification = await publish(Object.assign({ type: resourceClassficationType }, {
+      category: input.category
+    }), sbot)
+      .then(msg => Object.assign({ key: msg.key }, msg.value.content ))
+    const prices = getPrices(input.prices)
+    return publish(Object.assign({ type: economicResourceType,  createdDate: new Date() }, {
+      currentOwner: input.owner,
+      prices: input.prices,
+      resourceClassifiedAs: classification.key
+    }), sbot)
+      .then(msg => {
+        return {
+          key: msg.key,
+          category: classification.category,
+          prices,
+          user: msg.value.content.currentOwner,
+        }
+      })
+
+  },
   unpublishResource: async (_, { id }, { sbot }) => {
     const affectedResource = await getEconomicResource(id, sbot)
     return publish(Object.assign({ type: economicEventType, affects: [ affectedResource.key ], action: unpublishAction }), sbot)

@@ -42,6 +42,11 @@ const Query = `
 `
 
 const Mutation = `
+  input ResourceInput {
+    category: String!
+    owner: String!
+    prices: [String]
+  }
   input TransactionInput {
     provider: String!
     receiver: String!
@@ -50,6 +55,7 @@ const Mutation = `
     affects: [String]
   }
   type Mutation {
+    publishResource(input: ResourceInput): Resource
     unpublishResource(id: String!): Resource
     transaction(input: TransactionInput): Transaction
   }
