@@ -36,6 +36,12 @@ const getPrices = (prices) => prices.map(price => {
   }
 })
 
+const getTransactions = async (sbot) => {
+  const events = await getMessagesByType({ type: economicEventType }, sbot)
+  return events.filter(event => event.value.content.action === transactionAction)
+
+}
+
 const getEconomicResource = async (id, sbot) => {
   const economicResource = await message({ id }, sbot)
   const resourceClassifiedAs = await getResourceClassfication(economicResource.value.content.resourceClassifiedAs, sbot)
@@ -47,10 +53,8 @@ const getEconomicResource = async (id, sbot) => {
 }
 
 const getUserBalance = async(username, sbot) => {
-  const events = await getMessagesByType({ type: economicEventType }, sbot)
-  const transactions = events.filter(event => event.value.content.action === transactionAction)
+  const transactions = await getUserTransactions(username, sbot)
   const userReceived = transactions
-    .filter(transaction => transaction.value.content.receiver === username)
     .reduce((accumulator, currentValue) => {
       currentValue.value.content.affectedQuantity
         .map(price => {
@@ -84,30 +88,16 @@ const getUserBalance = async(username, sbot) => {
     return getPrices(formated)
 }
 
-const getUserPublications = async(username, sbot) => {
-
-}
-
-const getUserTransactions = async(username, sbot) => {
-
-}
-
-const getUser = async(username, sbot) => {
-  const balance = getUserBalance(username, sbot)
-  return {
-    username,
-    balance,
-  }
-}
-
-const Query = {
-  publishedResources: async (_, {}, { sbot }) => {
+const getPublishedResources = async (sbot) => {
+  try {
     const events = await getMessagesByType({ type: economicEventType }, sbot)
     const unpublished = events
       .filter(msg => msg.value.content.action === unpublishAction)
       .map(msg => msg.value.content.affects[0])
+    // console.log('unpublished', unpublished)
     const msgs = await getMessagesByType({ type: economicResourceType }, sbot)
-    return msgs
+    // console.log('MSGS', msgs)
+    const filtered = msgs
       .filter(msg => msg.value.content.prices.length > 0)
       .filter(msg => {
         let isUnpublished
@@ -117,9 +107,12 @@ const Query = {
         if (isUnpublished) return false
         return true
       })
-      .map(async msg => {
+    const res = await filtered
+      .map(async (msg) => {
+        console.log('MSG', Object.keys(msg).length)
         const resourceClassifiedAs = await getResourceClassfication(msg.value.content.resourceClassifiedAs, sbot)
         const prices = getPrices(msg.value.content.prices)
+        console.log('ASYNC')
         return {
           key: msg.key,
           category: resourceClassifiedAs.category,
@@ -127,6 +120,41 @@ const Query = {
           user: msg.value.content.currentOwner,
         }
       })
+    console.log('ASONC')
+    return res
+  } catch(err) {
+    console.log('ERROR!!', err)
+  }
+}
+
+const getUserPublications = async(username, sbot) => {
+  const resources = await getPublishedResources(sbot)
+  console.log(await resources)
+  return resources.filter(r => r.user === username)
+}
+
+const getUserTransactions = async(username, sbot) => {
+  const transactions = await getTransactions(sbot)
+  return transactions.filter(transaction => transaction.value.content.receiver === username)
+}
+
+const getUser = async(username, sbot) => {
+  const balance = await getUserBalance(username, sbot)
+  const transactions = await getUserTransactions(username, sbot)
+  const publishedResources = await getUserPublications(username, sbot)
+  // console.log('publishedResources', await publishedResources)
+  const res = {
+    username,
+    balance,
+    transactions,
+    publishedResources,
+  }
+  return res
+}
+
+const Query = {
+  publishedResources: async (_, {}, { sbot }) => {
+    return await getPublishedResources(sbot)
   },
   user: async(_, { username }, { sbot }) => {
     return getUser(username, sbot)
