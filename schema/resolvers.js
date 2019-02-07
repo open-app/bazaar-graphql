@@ -8,9 +8,9 @@ const {
   get,
 } = require('ssb-helpers')
 
-const resourceClassficationType = 'resourceClassificationTest3'
-const economicResourceType = 'economicResourceTest3'
-const economicEventType = 'economicEventTest3'
+const resourceClassficationType = 'vf:resourceClassificationAlpha'
+const economicResourceType = 'vf:economicResourceAlpha'
+const economicEventType = 'vf:economicEventAlpha'
 const unpublishAction = "unpublish resource"
 const transactionAction = "transaction"
 
@@ -55,6 +55,7 @@ const getEconomicResource = async (id, sbot) => {
 const getUserBalance = async(username, sbot) => {
   const transactions = await getUserTransactions(username, sbot)
   const userReceived = transactions
+    .filter(transaction => transaction.value.content.receiver === username)
     .reduce((accumulator, currentValue) => {
       currentValue.value.content.affectedQuantity
         .map(price => {
@@ -109,10 +110,10 @@ const getPublishedResources = async (sbot) => {
       })
     const res = await filtered
       .map(async (msg) => {
-        console.log('MSG', Object.keys(msg).length)
+        // console.log('MSG', Object.keys(msg).length)
         const resourceClassifiedAs = await getResourceClassfication(msg.value.content.resourceClassifiedAs, sbot)
         const prices = getPrices(msg.value.content.prices)
-        console.log('ASYNC')
+        // console.log('ASYNC')
         return {
           key: msg.key,
           category: resourceClassifiedAs.category,
@@ -120,7 +121,7 @@ const getPublishedResources = async (sbot) => {
           user: msg.value.content.currentOwner,
         }
       })
-    console.log('ASONC')
+    // console.log('ASONC')
     return res
   } catch(err) {
     console.log('ERROR!!', err)
@@ -129,20 +130,18 @@ const getPublishedResources = async (sbot) => {
 
 const getUserPublications = async(username, sbot) => {
   const resources = await getPublishedResources(sbot)
-  console.log(await resources)
   return resources.filter(r => r.user === username)
 }
 
 const getUserTransactions = async(username, sbot) => {
   const transactions = await getTransactions(sbot)
-  return transactions.filter(transaction => transaction.value.content.receiver === username)
+  return transactions.filter(transaction => (transaction.value.content.receiver === username || transaction.value.content.provider === username))
 }
 
 const getUser = async(username, sbot) => {
   const balance = await getUserBalance(username, sbot)
   const transactions = await getUserTransactions(username, sbot)
   const publishedResources = await getUserPublications(username, sbot)
-  // console.log('publishedResources', await publishedResources)
   const res = {
     username,
     balance,
