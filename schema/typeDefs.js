@@ -11,6 +11,7 @@ const Transaction = `
     provider: User!
     receiver: User!
     affectedQuantity: Price!
+    scope: String!
     affects: [Resource]
   }
 `
@@ -21,6 +22,7 @@ const User = `
     balance: [Price]
     publishedResources: [Resource]
     transactions: [Transaction]
+    scope: String!
   }
 `
 
@@ -30,6 +32,7 @@ const Resource = `
     category: String!
     prices: [Price]
     user: String!
+    scope: String!
   }
 `
 

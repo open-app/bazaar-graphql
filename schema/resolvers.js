@@ -1,11 +1,7 @@
 const { 
-  // getId,
-  getAbout,
-  // getBlob,
   publish,
   message,
   getMessagesByType,
-  get,
 } = require('ssb-helpers')
 
 const resourceClassficationType = 'vf:resourceClassificationAlpha'
@@ -38,7 +34,8 @@ const getPrices = (prices) => prices.map(price => {
 
 const getTransactions = async (sbot) => {
   const events = await getMessagesByType({ type: economicEventType }, sbot)
-  return events.filter(event => event.value.content.action === transactionAction)
+  return events
+    .filter(event => event.value.content.action === transactionAction)
 
 }
 
@@ -52,8 +49,8 @@ const getEconomicResource = async (id, sbot) => {
   )
 }
 
-const getUserBalance = async(username, sbot) => {
-  const transactions = await getUserTransactions(username, sbot)
+const getUserBalance = async(username, scope, sbot) => {
+  const transactions = await getUserTransactions(username, scope, sbot)
   const userReceived = transactions
     .filter(transaction => transaction.value.content.receiver === username)
     .reduce((accumulator, currentValue) => {
@@ -89,10 +86,11 @@ const getUserBalance = async(username, sbot) => {
     return getPrices(formated)
 }
 
-const getPublishedResources = async (sbot) => {
+const getPublishedResources = async (scope, sbot) => {
   try {
     const events = await getMessagesByType({ type: economicEventType }, sbot)
-    const unpublished = events
+    const communityEvents = events.filter(e => e.value.content.scope === scope)
+    const unpublished = communityEvents
       .filter(msg => msg.value.content.action === unpublishAction)
       .map(msg => msg.value.content.affects[0])
     // console.log('unpublished', unpublished)
@@ -119,6 +117,7 @@ const getPublishedResources = async (sbot) => {
           category: resourceClassifiedAs.category,
           prices,
           user: msg.value.content.currentOwner,
+          scope,
         }
       })
     // console.log('ASONC')
@@ -128,45 +127,51 @@ const getPublishedResources = async (sbot) => {
   }
 }
 
-const getUserPublications = async(username, sbot) => {
-  const resources = await getPublishedResources(sbot)
+const getUserPublications = async(username, scope, sbot) => {
+  const resources = await getPublishedResources(scope, sbot)
   return resources.filter(r => r.user === username)
 }
 
-const getUserTransactions = async(username, sbot) => {
+const getUserTransactions = async(username, scope, sbot) => {
   const transactions = await getTransactions(sbot)
-  return transactions.filter(transaction => (transaction.value.content.receiver === username || transaction.value.content.provider === username))
+  return transactions
+    .filter(transaction => transaction.value.content.scope === scope)
+    .filter(transaction => (transaction.value.content.receiver === username || transaction.value.content.provider === username))
 }
 
-const getUser = async(username, sbot) => {
-  const balance = await getUserBalance(username, sbot)
-  const transactions = await getUserTransactions(username, sbot)
-  const publishedResources = await getUserPublications(username, sbot)
+const getUser = async(username, scope, sbot) => {
+  const balance = await getUserBalance(username, scope, sbot)
+  const rawTransactions = await getUserTransactions(username, scope, sbot)
+  const transactions = rawTransactions.map(t => Object.assign(t.value.content, { key: t.key }))
+  const publishedResources = await getUserPublications(username, scope, sbot)
   const res = {
     username,
     balance,
     transactions,
     publishedResources,
+    scope,
   }
   return res
 }
 
 const Query = {
-  publishedResources: async (_, {}, { sbot }) => {
-    return await getPublishedResources(sbot)
+  publishedResources: async (_, {}, { sbot, opts }) => {
+    return await getPublishedResources(opts.scope, sbot)
   },
-  user: async(_, { username }, { sbot }) => {
-    return getUser(username, sbot)
+  user: async(_, { username }, { sbot, opts }) => {
+    return getUser(username, opts.scope, sbot)
   },
-  transactions: async(_, {}, {sbot}) => {
+  transactions: async(_, {}, { sbot, opts }) => {
     const events = await getMessagesByType({ type: economicEventType }, sbot)
-    const transactions = events.filter(event => event.value.content.action === transactionAction)
+    const transactions = events
+      .filter(event => event.value.content.scope === opts.scope)
+      .filter(event => event.value.content.action === transactionAction)
     return transactions.map(tx => Object.assign(tx.value.content, { key: tx.key }))
   }
 }
 
 const Mutation = {
-  publishResource: async (_, { input }, { sbot }) => {
+  publishResource: async (_, { input }, { sbot, opts }) => {
     const classification = await publish(Object.assign({ type: resourceClassficationType }, {
       category: input.category
     }), sbot)
@@ -175,7 +180,8 @@ const Mutation = {
     return publish(Object.assign({ type: economicResourceType,  createdDate: new Date() }, {
       currentOwner: input.owner,
       prices: input.prices,
-      resourceClassifiedAs: classification.key
+      resourceClassifiedAs: classification.key,
+      scope: opts.scope,
     }), sbot)
       .then(msg => {
         return {
@@ -183,6 +189,7 @@ const Mutation = {
           category: classification.category,
           prices,
           user: msg.value.content.currentOwner,
+          scope: msg.value.content.scope
         }
       })
 
@@ -199,14 +206,15 @@ const Mutation = {
         }
       })
   },
-  transaction: async(_, { input: { provider, receiver, currency, value, affects }}, { sbot }) => {
+  transaction: async(_, { input: { provider, receiver, currency, value, affects }}, { sbot, opts }) => {
     return publish({
       type: economicEventType,
       affects: affects,
       action: transactionAction,
       provider,
       receiver,
-      affectedQuantity: [`${value},${currency}`]
+      affectedQuantity: [`${value},${currency}`],
+      scope: opts.scope,
     }, sbot)
       .then(msg => {
         return {
@@ -214,6 +222,7 @@ const Mutation = {
           provider: getUser(msg.value.content.provider, sbot),
           receiver: getUser(msg.value.content.receiver, sbot),
           affectedQuantity: [ { currency, value }],
+          scope: msg.value.content.scope,
         }
       })
   },
