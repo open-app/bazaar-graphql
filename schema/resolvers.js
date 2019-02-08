@@ -194,9 +194,9 @@ const Mutation = {
       })
 
   },
-  unpublishResource: async (_, { id }, { sbot }) => {
+  unpublishResource: async (_, { id }, { sbot, opts }) => {
     const affectedResource = await getEconomicResource(id, sbot)
-    return publish(Object.assign({ type: economicEventType, affects: [ affectedResource.key ], action: unpublishAction }), sbot)
+    return publish(Object.assign({ type: economicEventType, affects: [ affectedResource.key ], action: unpublishAction, scope: opts.scope }), sbot)
       .then(msg => {
         return {
           key: msg.key,
@@ -219,8 +219,8 @@ const Mutation = {
       .then(msg => {
         return {
           key: msg.key,
-          provider: getUser(msg.value.content.provider, sbot),
-          receiver: getUser(msg.value.content.receiver, sbot),
+          provider: getUser(msg.value.content.provider, msg.value.content.scope, sbot),
+          receiver: getUser(msg.value.content.receiver, msg.value.content.scope, sbot),
           affectedQuantity: [ { currency, value }],
           scope: msg.value.content.scope,
         }
