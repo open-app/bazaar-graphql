@@ -97,6 +97,7 @@ const getPublishedResources = async (scope, sbot) => {
     const msgs = await getMessagesByType({ type: economicResourceType }, sbot)
     // console.log('MSGS', msgs)
     const filtered = msgs
+      .filter(e => e.value.content.scope === scope)
       .filter(msg => msg.value.content.prices.length > 0)
       .filter(msg => {
         let isUnpublished
@@ -117,7 +118,7 @@ const getPublishedResources = async (scope, sbot) => {
           category: resourceClassifiedAs.category,
           prices,
           user: msg.value.content.currentOwner,
-          scope,
+          scope: msg.value.content.scope,
         }
       })
     // console.log('ASONC')
